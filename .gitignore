@@ -1,0 +1,15 @@
+.idea/
+log/
+__pycache__
+.pytest_cache
+/assets/
+/cert/
+*.sh
+*.pem
+apiclient_cert.*
+gitignore
+main.py
+gunicorn.conf.py
+restart.sh
+*.log
+*.pyc
