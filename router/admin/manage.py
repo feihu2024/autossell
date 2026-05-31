@@ -12,10 +12,6 @@ from .found import router as found_router
 from .video_task import router as vtask_router
 from .user_ad import router as user_ad_router
 from .autobody import router as autobody_router
-from .video_parse import router as video_parse_router
-from .ai_image_generate import router as ai_image_generate_router
-from .video_to_prompt import router as video_to_prompt_router
-from .video_upload import router as video_upload_router
 
 router = APIRouter()
 router.include_router(good_router)
@@ -31,7 +27,3 @@ router.include_router(found_router)  #资金池管理
 router.include_router(vtask_router)  #视频任务管理
 router.include_router(user_ad_router)  #品牌广告管理
 router.include_router(autobody_router)  #智能体管理
-router.include_router(video_parse_router)  #视频链接解析
-router.include_router(ai_image_generate_router)  #AI图片生成
-router.include_router(video_to_prompt_router)  #视频反推提示词
-router.include_router(video_upload_router)  #视频上传+时长校验
