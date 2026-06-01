@@ -10,7 +10,7 @@ class VideoParseRequest(BaseModel):
     url: str    # 用户输入的视频链接
 
 
-@router.post("/parse")
+@router.post("/")
 def parse_video(req: VideoParseRequest):
     """
     视频链接解析接口

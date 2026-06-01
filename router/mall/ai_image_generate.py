@@ -16,7 +16,7 @@ class ImageGenerateRequest(BaseModel):
     n: Optional[int] = 1   # 生成数量，默认 1
 
 
-@router.post("/generate")
+@router.post("/")
 def generate_image_api(req: ImageGenerateRequest):
     """
     AI 图片生成接口

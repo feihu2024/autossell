@@ -20,7 +20,7 @@ class VideoToPromptRequest(BaseModel):
     stream: Optional[bool] = False       # 是否流式输出，管理端传入，默认False
 
 
-@router.post("/video_to_prompt")
+@router.post("/")
 async def video_to_prompt_api(req: VideoToPromptRequest):
     """
     视频反推提示词接口（基于阿里云 DashScope 多模态 API）
