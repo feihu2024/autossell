@@ -3,15 +3,15 @@ import logging
 import uuid
 from pathlib import Path
 from qiniu import Auth, BucketManager
-from config import QINIU, DOMAIN
+from config import QINIU
 
 logger = logging.getLogger(__name__)
 
 # ALAPI 视频解析接口地址
 ALAPI_VIDEO_URL = "https://v3.alapi.cn/api/video/url"
 
-# 七牛云对外访问域名
-QINIU_BASE_URL = DOMAIN.rstrip('/') if DOMAIN else ''
+# 七牛云对外访问域名（硬编码）
+QINIU_BASE_URL = 'https://mlcfjihuaqn.yxiaozhu.com'
 
 
 def _fetch_to_qiniu(resource_url: str, prefix: str = "video") -> str:
@@ -35,7 +35,9 @@ def _fetch_to_qiniu(resource_url: str, prefix: str = "video") -> str:
     except Exception:
         suffix = ""
     if not suffix:
-        suffix = ".mp4" if prefix in ("video", "livephoto") else ".jpg"
+        # 根据资源类型指定默认后缀：视频类 → .mp4，图片类 → .jpg
+        _is_video = prefix in ("video", "livephoto") or "video" in prefix
+        suffix = ".mp4" if _is_video else ".jpg"
 
     key = f"{prefix}/{uuid.uuid4()}{suffix}"
 
@@ -45,7 +47,10 @@ def _fetch_to_qiniu(resource_url: str, prefix: str = "video") -> str:
         ret, info = bucket.fetch(resource_url, QINIU.bucketName, key)
         if info.status_code == 200 and ret is not None:
             qiniu_key = ret.get("key", key)
-            return f"{QINIU_BASE_URL}/{qiniu_key}"
+            raw_url = f"{QINIU_BASE_URL}/{qiniu_key}"
+            # 生成私有空间签名链接（公开空间同样兼容），有效期 24 小时
+            signed_url = qiniu_auth.private_download_url(raw_url, expires=86400)
+            return signed_url
         else:
             logger.warning(f"七牛 fetch 失败 {resource_url}: status={info.status_code}")
             return ""
