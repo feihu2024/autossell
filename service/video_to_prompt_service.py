@@ -55,6 +55,17 @@ def video_to_prompt(
     if stream:
         headers["X-DashScope-SSE"] = "enable"
 
+    # 构建 video 对象，只添加非默认值的参数（避免不支持的字段导致 400）
+    video_obj = {"video": video_url, "fps": fps}
+    if max_frames and max_frames != 2000:
+        video_obj["max_frames"] = max_frames
+    if min_pixels and min_pixels != 65536:
+        video_obj["min_pixels"] = min_pixels
+    if max_pixels and max_pixels != 655360:
+        video_obj["max_pixels"] = max_pixels
+    if total_pixels and total_pixels != 134217728:
+        video_obj["total_pixels"] = total_pixels
+
     payload = {
         "model": model,
         "input": {
@@ -62,17 +73,8 @@ def video_to_prompt(
                 {
                     "role": "user",
                     "content": [
+                        video_obj,
                         {
-                            "type": "video",
-                            "video": [video_url],
-                            "fps": fps,
-                            "max_frames": max_frames,
-                            "min_pixels": min_pixels,
-                            "max_pixels": max_pixels,
-                            "total_pixels": total_pixels,
-                        },
-                        {
-                            "type": "text",
                             "text": prompt,
                         },
                     ],
@@ -81,7 +83,6 @@ def video_to_prompt(
         },
         "parameters": {
             "incremental_output": stream,
-            "stream": stream,
         },
     }
 
