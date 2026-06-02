@@ -1,51 +1,78 @@
 import requests
 import logging
 import json
+from dao.d_video_config import get_config_value
 
 logger = logging.getLogger(__name__)
 
 # DashScope 视频理解接口地址
 DASHSCOPE_VIDEO_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
+# 各参数的默认值，用于判断是否需要发送给 API
+DEFAULT_MAX_FRAMES = 2000
+DEFAULT_MIN_PIXELS = 65536
+DEFAULT_MAX_PIXELS = 655360
+DEFAULT_TOTAL_PIXELS = 134217728
 
-def video_to_prompt(
-    api_key: str,
-    model: str,
-    video_url: str,
-    prompt: str,
-    fps: float = 2.0,
-    max_frames: int = 2000,
-    min_pixels: int = 65536,
-    max_pixels: int = 655360,
-    total_pixels: int = 134217728,
-    stream: bool = False,
-) -> dict:
+
+def _safe_float(val, default=2.0):
+    """安全转换为 float"""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_int(val, default):
+    """安全转换为 int"""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_bool(val, default=False):
+    """安全转换为 bool"""
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.lower() in ("true", "1", "yes")
+    return default
+
+
+def video_to_prompt(video_url: str) -> dict:
     """
     通过 DashScope 多模态 API 理解视频内容，反推生成文字描述（提示词）
+    所有管理端参数从数据库 video_config 表读取
 
-    :param api_key:      DashScope API Key，管理端传入
-    :param model:        模型名称，如 "qwen-vl-max-latest"，管理端传入
-    :param video_url:    视频公网URL，用户上传后传入
-    :param prompt:       提示词，管理端传入
-    :param fps:          抽帧频率，默认2.0，管理端传入
-    :param max_frames:   最大帧数，默认2000，管理端传入
-    :param min_pixels:   最小像素，默认65536，管理端传入
-    :param max_pixels:   最大像素，默认655360，管理端传入
-    :param total_pixels: 总像素限制，默认134217728，管理端传入
-    :param stream:       是否流式输出，管理端传入
+    :param video_url: 视频公网URL，前端传入
     :return: DashScope 原始返回结果（透传给前端）
     """
+    # 从数据库读取管理端配置
+    api_key = get_config_value("video_to_prompt", "api_key")
     if not api_key:
-        return {"code": -1, "msg": "api_key 不能为空"}
+        return {"code": -1, "msg": "api_key 未配置，请联系管理员"}
 
-    if not model:
-        return {"code": -1, "msg": "模型名称不能为空"}
+    model = get_config_value("video_to_prompt", "model") or "qwen3.6-plus"
+    prompt = get_config_value("video_to_prompt", "prompt")
+    if not prompt:
+        return {"code": -1, "msg": "提示词未配置，请联系管理员"}
+
+    fps = _safe_float(get_config_value("video_to_prompt", "fps"), 2.0)
+    max_frames = _safe_int(get_config_value("video_to_prompt", "max_frames"), DEFAULT_MAX_FRAMES)
+    min_pixels = _safe_int(get_config_value("video_to_prompt", "min_pixels"), DEFAULT_MIN_PIXELS)
+    max_pixels = _safe_int(get_config_value("video_to_prompt", "max_pixels"), DEFAULT_MAX_PIXELS)
+    total_pixels = _safe_int(get_config_value("video_to_prompt", "total_pixels"), DEFAULT_TOTAL_PIXELS)
+    stream = _safe_bool(get_config_value("video_to_prompt", "stream"), False)
 
     if not video_url:
         return {"code": -1, "msg": "视频地址不能为空"}
-
-    if not prompt:
-        return {"code": -1, "msg": "提示词不能为空"}
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -57,13 +84,13 @@ def video_to_prompt(
 
     # 构建 video 对象，只添加非默认值的参数（避免不支持的字段导致 400）
     video_obj = {"video": video_url, "fps": fps}
-    if max_frames and max_frames != 2000:
+    if max_frames and max_frames != DEFAULT_MAX_FRAMES:
         video_obj["max_frames"] = max_frames
-    if min_pixels and min_pixels != 65536:
+    if min_pixels and min_pixels != DEFAULT_MIN_PIXELS:
         video_obj["min_pixels"] = min_pixels
-    if max_pixels and max_pixels != 655360:
+    if max_pixels and max_pixels != DEFAULT_MAX_PIXELS:
         video_obj["max_pixels"] = max_pixels
-    if total_pixels and total_pixels != 134217728:
+    if total_pixels and total_pixels != DEFAULT_TOTAL_PIXELS:
         video_obj["total_pixels"] = total_pixels
 
     payload = {

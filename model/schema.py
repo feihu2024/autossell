@@ -2482,3 +2482,15 @@ class TVideoTaskType(Base):
     title = Column(String(255), comment='类型标题')
     describe = Column(Text, comment='类型描述')
     cover = Column(String(500), comment='封面图')
+
+
+class TVideoConfig(Base):
+    __tablename__ = 'video_config'
+    __table_args__ = {'comment': '视频相关模块管理端配置表'}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    config_key = Column(VARCHAR(50), nullable=False, comment='配置键')
+    config_value = Column(Text, comment='配置值')
+    module = Column(VARCHAR(30), nullable=False, comment='所属模块: video_parse / ai_image / video_to_prompt')
+    description = Column(VARCHAR(200), comment='配置说明')
+    updated_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), comment='更新时间')

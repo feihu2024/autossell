@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 # from service.auth import s_login
 from router import admin, mall, supplier, finance
 # import router.supplier.user
-from router.admin import manage, package, package_order, good_spec, settings, groupsir, balance, good, busines_service
+from router.admin import manage, package, package_order, good_spec, settings, groupsir, balance, good, busines_service, video_config
 from router import file, r_schema, r_query, r_update, r_create, r_wx
 from router.mall import autobody, user, home, address, good, order, \
     account, platform, vtask, adbrand, video_parse, ai_image_generate, video_to_prompt
@@ -63,6 +63,8 @@ def include_routers(app: FastAPI):
     app.include_router(mall.video_parse.router, prefix='/web/video/parse', tags=['/web/video/parse'])
     app.include_router(mall.ai_image_generate.router, prefix='/web/video/generate', tags=['/web/video/generate'])
     app.include_router(mall.video_to_prompt.router, prefix='/web/video/to_prompt', tags=['/web/video/to_prompt'])
+    # # video config (管理端配置)
+    app.include_router(admin.video_config.router, prefix='/autoselladmin/video_config', tags=['/autoselladmin/video_config'])
     # # mall admin
     app.include_router(admin.manage.router, prefix='/autoselladmin/manage', tags=['/autoselladmin/manage'])
     #

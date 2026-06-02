@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 from qiniu import Auth, BucketManager
 from config import QINIU
+from dao.d_video_config import get_config_value
 
 logger = logging.getLogger(__name__)
 
@@ -105,16 +106,18 @@ def _upload_resources(data: dict) -> None:
                         item["video"] = qiniu_url
 
 
-def parse_video_url(token: str, url: str) -> dict:
+def parse_video_url(url: str) -> dict:
     """
     通过 ALAPI 解析视频链接，提取视频/封面/图集并转存至七牛云
+    token 从数据库 video_config 表读取
 
-    :param token: ALAPI 接口令牌，由管理端配置传入
     :param url: 用户输入的视频链接（支持抖音、快手、小红书、B站等平台）
     :return: 解析结果字典，video_url / cover_url / pics / livephoto 已替换为七牛云链接
     """
+    # 从数据库读取 token
+    token = get_config_value("video_parse", "token")
     if not token:
-        return {"code": -1, "msg": "token 不能为空，请联系管理员配置"}
+        return {"code": -1, "msg": "token 未配置，请联系管理员"}
 
     if not url:
         return {"code": -1, "msg": "视频链接不能为空"}
