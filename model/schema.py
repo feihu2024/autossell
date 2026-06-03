@@ -2494,3 +2494,15 @@ class TVideoConfig(Base):
     module = Column(VARCHAR(30), nullable=False, comment='所属模块: video_parse / ai_image / video_to_prompt')
     description = Column(VARCHAR(200), comment='配置说明')
     updated_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), comment='更新时间')
+
+
+class TAiImageTask(Base):
+    __tablename__ = 'ai_image_task'
+    __table_args__ = {'comment': 'AI图片生成任务表'}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    userid = Column(String(100), nullable=False, index=True, comment='前端用户ID')
+    task_id = Column(String(200), nullable=False, index=True, comment='ALAPI返回的任务ID')
+    qiniu_url = Column(Text, default='生成中', comment='七牛云图片URL，生成中表示未完成，多图时为JSON数组')
+    created_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), comment='创建时间')
+    updated_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), comment='更新时间')

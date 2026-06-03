@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class MYSQL:
@@ -54,8 +56,9 @@ class WXPAY:
     TIMEOUT = (10, 30)  # 建立连接最大超时时间是10s，读取响应的最大超时时间是30s
 
     PUBLIC_KEY = ''  # 微信支付平台公钥
-    with open(os.getenv('WX_PUBLIC_KEY'), 'r') as f:
-        PUBLIC_KEY = f.read()
+    if os.getenv('WX_PUBLIC_KEY'):
+        with open(os.getenv('WX_PUBLIC_KEY'), 'r') as f:
+            PUBLIC_KEY = f.read()
 
     # 微信支付平台公钥ID
     PUBLIC_KEY_ID = os.getenv('WX_PUBLIC_KEY_ID')
