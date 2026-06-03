@@ -16,7 +16,7 @@ from dao.d_ai_image_task import (
 logger = logging.getLogger(__name__)
 
 # ALAPI 图片生成异步接口地址
-ALAPI_IMAGE_GEN_URL = "https://v3.alapi.cn/api/ai/images/generations"
+ALAPI_IMAGE_GEN_URL = "https://v3.alapi.cn/api/ai/images/generations_sync"
 # ALAPI 图片生成任务查询接口地址
 ALAPI_IMAGE_TASK_URL = "https://v3.alapi.cn/api/ai/images/generations/task"
 
@@ -133,7 +133,7 @@ def generate_image(
     headers = {"Content-Type": "application/json"}
 
     try:
-        response = requests.post(ALAPI_IMAGE_GEN_URL, json=payload, headers=headers, timeout=30)
+        response = requests.post(ALAPI_IMAGE_GEN_URL, json=payload, headers=headers, timeout=60)
         response.raise_for_status()
         result = response.json()
 
