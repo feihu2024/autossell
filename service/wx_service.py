@@ -94,24 +94,21 @@ def supplier_login(code: str) -> ResWxLogin:
 LOGGER = logging.getLogger("wxpay")
 
 # wxpay = object()
-if WXPAY.PRIVATE_KEY and WXPAY.MCHID:
-    wxpay = WeChatPay(
-        wechatpay_type=WeChatPayType.NATIVE,
-        mchid=WXPAY.MCHID,
-        private_key=WXPAY.PRIVATE_KEY,
-        cert_serial_no=WXPAY.CERT_SERIAL_NO,
-        apiv3_key=WXPAY.APIV3_KEY,
-        appid=WX.appId,
-        notify_url=WXPAY.NOTIFY_URL,
-        cert_dir=WXPAY.CERT_DIR,
-        logger=LOGGER,
-        partner_mode=False,
-        proxy=None,
-        timeout=WXPAY.TIMEOUT)
-        # public_key=WXPAY.PUBLIC_KEY,
-        # public_key_id=WXPAY.PUBLIC_KEY_ID)
-else:
-    wxpay = None
+wxpay = WeChatPay(
+    wechatpay_type=WeChatPayType.NATIVE,
+    mchid=WXPAY.MCHID,
+    private_key=WXPAY.PRIVATE_KEY,
+    cert_serial_no=WXPAY.CERT_SERIAL_NO,
+    apiv3_key=WXPAY.APIV3_KEY,
+    appid=WX.appId,
+    notify_url=WXPAY.NOTIFY_URL,
+    cert_dir=WXPAY.CERT_DIR,
+    logger=LOGGER,
+    partner_mode=False,
+    proxy=None,
+    timeout=WXPAY.TIMEOUT)
+    # public_key=WXPAY.PUBLIC_KEY,
+    # public_key_id=WXPAY.PUBLIC_KEY_ID)
 
 wxpayservice = object()
 #服务商 WeChatPay对象
