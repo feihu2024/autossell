@@ -15,7 +15,7 @@ def create_image_task(userid: str, task_id: str, task_type: str = 'tst') -> TAiI
     """
     sess = Session()
     try:
-        record = TAiImageTask(userid=userid, task_id=task_id, qiniu_url='生成中', type=task_type)
+        record = TAiImageTask(userid=userid, task_id=task_id, qiniu_url='生成中', task_type=task_type)
         sess.add(record)
         sess.commit()
         sess.refresh(record)
@@ -40,7 +40,7 @@ def get_pending_tasks_by_userid(userid: str) -> list:
             TAiImageTask.userid == userid,
             TAiImageTask.qiniu_url == '生成中'
         ).all()
-        return [{"task_id": r.task_id, "qiniu_url": r.qiniu_url, "type": r.type} for r in records]
+        return [{"task_id": r.task_id, "qiniu_url": r.qiniu_url, "task_type": r.task_type} for r in records]
     finally:
         sess.close()
 
@@ -76,6 +76,6 @@ def get_all_tasks_by_userid(userid: str) -> list:
         records = sess.query(TAiImageTask).filter(
             TAiImageTask.userid == userid
         ).order_by(TAiImageTask.id.asc()).all()
-        return [{"task_id": r.task_id, "qiniu_url": r.qiniu_url, "type": r.type} for r in records]
+        return [{"task_id": r.task_id, "qiniu_url": r.qiniu_url, "task_type": r.task_type} for r in records]
     finally:
         sess.close()

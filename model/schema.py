@@ -2504,6 +2504,6 @@ class TAiImageTask(Base):
     userid = Column(String(100), nullable=False, index=True, comment='前端用户ID')
     task_id = Column(String(200), nullable=False, index=True, comment='ALAPI返回的任务ID')
     qiniu_url = Column(Text, default='生成中', comment='七牛云图片URL，生成中表示未完成，多图时为JSON数组')
-    type = Column(String(10), default='tst', comment='任务类型: tst=文生图, wst=图生图')
+    task_type = Column(String(10), default='tst', comment='任务类型: tst=文生图, wst=图生图')
     created_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), comment='创建时间')
     updated_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), comment='更新时间')
