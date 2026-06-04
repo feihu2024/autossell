@@ -31,6 +31,7 @@ def create_image_task(userid: str, task_id: str) -> TAiImageTask:
 def get_pending_tasks_by_userid(userid: str) -> list:
     """
     查询某用户下 qiniu_url='生成中' 的待处理任务列表
+    返回字典列表，避免 session 关闭后 ORM 对象属性过期
     """
     sess = Session()
     try:
@@ -38,7 +39,7 @@ def get_pending_tasks_by_userid(userid: str) -> list:
             TAiImageTask.userid == userid,
             TAiImageTask.qiniu_url == '生成中'
         ).all()
-        return records
+        return [{"task_id": r.task_id, "qiniu_url": r.qiniu_url} for r in records]
     finally:
         sess.close()
 

@@ -182,7 +182,7 @@ def query_user_image_tasks(userid: str) -> dict:
 
     # 2. 逐个调用 ALAPI 查询接口
     for task in pending_tasks:
-        task_id = task.task_id
+        task_id = task["task_id"]
         payload = {
             "token": token,
             "task_id": task_id,
@@ -193,18 +193,21 @@ def query_user_image_tasks(userid: str) -> dict:
             response.raise_for_status()
             result = response.json()
 
-            # ALAPI 返回结构: {"code": 200, "data": {"data": [{"url": "..."}, {"url": "..."}]}}
+            # ALAPI 查询接口实际返回结构:
+            # {"code": 200, "data": {"task_id": "...", "status": "completed",
+            #   "result": {"images": [{"url": "..."}]}}}
             if result.get("code") == 200:
                 data = result.get("data", {})
-                images = data.get("data", [])
-                if images and isinstance(images, list) and len(images) > 0:
+                status = data.get("status", "")
+                images = data.get("result", {}).get("images", [])
+                if status == "completed" and images and isinstance(images, list) and len(images) > 0:
                     # 全部图片进行七牛 fetch，存为 JSON 数组
                     qiniu_urls_json = _fetch_all_images_to_qiniu(images)
                     update_task_qiniu_url(task_id, qiniu_urls_json)
                     logger.info(f"任务图片已全部抓取至七牛: task_id={task_id}, 图片数={len(images)}")
                 else:
                     # 任务还在处理中，保持 qiniu_url='生成中'
-                    logger.info(f"任务处理中: task_id={task_id}")
+                    logger.info(f"任务处理中: task_id={task_id}, status={status}")
             else:
                 logger.warning(f"查询任务失败: task_id={task_id}, msg={result.get('msg', '')}")
         except requests.exceptions.Timeout:
