@@ -141,7 +141,9 @@ def generate_image(
             task_id = result["data"]["task_id"]
             logger.info(f"图片生成任务创建成功: prompt={prompt[:50]}..., task_id={task_id}, userid={userid}")
             # 存储到数据库，qiniu_url 默认 '生成中'
-            create_image_task(userid=userid, task_id=task_id)
+            # 根据是否携带 image_urls 判断类型: 有图片→图生图(wst)，无图片→文生图(tst)
+            task_type = 'wst' if image_urls else 'tst'
+            create_image_task(userid=userid, task_id=task_id, task_type=task_type)
             return {"code": 200, "task_id": task_id}
         else:
             logger.warning(f"图片生成任务创建失败: {result.get('msg', '未知错误')}")
