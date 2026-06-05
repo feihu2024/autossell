@@ -244,6 +244,11 @@ def query_user_image_tasks(userid: str) -> dict:
         except Exception as e:
             logger.warning(f"查询任务未知异常: task_id={task_id}, err={e}")
 
+    # 3. 查询该用户所有任务的 qiniu_url 并立即返回
+    all_tasks = get_all_tasks_by_userid(userid)
+    return {"code": 200, "data": all_tasks}
+
+
 # 数据库记录保留时长（秒），48 小时
 RECORD_EXPIRE_SECONDS = 48 * 3600
 # 每天凌晨3点执行清理
