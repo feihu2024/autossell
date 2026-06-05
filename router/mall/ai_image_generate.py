@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from service.ai_image_generate_service import generate_image, query_user_image_tasks
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 router = APIRouter()
 
@@ -11,7 +11,7 @@ class ImageGenerateRequest(BaseModel):
     userid: str             # 前端用户ID
     size: Optional[str] = ""   # 用户端选择的尺寸（可选，空则使用模型默认）
     resolution: Optional[str] = "1k"  # 用户端选择的分辨率，默认 "1k"
-    image_urls: Optional[str] = ""    # 前端传入的参考图片地址（可选，可空置）
+    image_urls: Optional[List[str]] = None    # 前端传入的参考图片地址列表（可选，支持多张）
 
 
 class ImageTaskQueryRequest(BaseModel):
@@ -28,7 +28,7 @@ def generate_image_api(req: ImageGenerateRequest):
         userid:     前端用户ID
         size:       图片尺寸，如 "1024x1024"（可选，空则使用模型默认）
         resolution:  图片分辨率，如 "1k"、"2k"（可选，默认 "1k"）
-        image_urls: 参考图片地址，用于图生图（可选，可空置）
+        image_urls: 参考图片地址列表，用于图生图（可选，支持多张，如 ["url1","url2"]）
     返回:
         {"code": 200, "task_id": "ALAPI返回的任务ID"}
     """

@@ -5,6 +5,7 @@ import uuid
 import threading
 import time
 from datetime import datetime, timedelta
+from typing import List, Optional
 from pathlib import Path
 from qiniu import Auth, BucketManager
 from config import QINIU
@@ -95,7 +96,7 @@ def generate_image(
     userid: str,
     size: str = "",
     resolution: str = "1k",
-    image_urls: str = "",
+    image_urls: Optional[List[str]] = None,
 ) -> dict:
     """
     调用 ALAPI 异步接口生成 AI 图片，存储 task_id 和 userid 到数据库
@@ -105,7 +106,7 @@ def generate_image(
     :param userid: 前端用户ID
     :param size: 图片尺寸，用户端选择（为空时使用模型默认）
     :param resolution: 图片分辨率，用户端选择，默认 "1k"
-    :param image_urls: 参考图片地址（可选，可空置）
+    :param image_urls: 参考图片地址列表（可选，支持多张，如 ["url1","url2"]）
     :return: {"code": 200, "task_id": "xxx"} 或错误信息
     """
     # 从数据库读取管理端配置
@@ -127,12 +128,12 @@ def generate_image(
         "prompt": prompt,
         "n": n,
         "size": size,
-        "image_urls": image_urls,
+        "image_urls": image_urls or [],
         "resolution": resolution,
     }
 
-    # 过滤空字符串参数（可选字段空置时不传），保留数字类型
-    payload = {k: v for k, v in payload.items() if v is not None and v != ""}
+    # 过滤空值参数（空字符串、空列表、None 不传），保留数字类型和有效列表
+    payload = {k: v for k, v in payload.items() if v is not None and v != "" and v != []}
 
     headers = {"Content-Type": "application/json"}
 
