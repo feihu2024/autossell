@@ -2,6 +2,9 @@ import requests
 import logging
 import json
 import uuid
+import threading
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from qiniu import Auth, BucketManager
 from config import QINIU
@@ -11,6 +14,7 @@ from dao.d_ai_image_task import (
     get_pending_tasks_by_userid,
     update_task_qiniu_url,
     get_all_tasks_by_userid,
+    delete_expired_tasks,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,8 +60,8 @@ def _fetch_image_to_qiniu(image_url: str) -> str:
         if info.status_code == 200 and ret is not None:
             qiniu_key = ret.get("key", key)
             raw_url = f"{QINIU_BASE_URL}/{qiniu_key}"
-            # 生成私有空间签名链接（公开空间同样兼容），有效期 24 小时
-            signed_url = qiniu_auth.private_download_url(raw_url, expires=86400)
+            # 生成私有空间签名链接（公开空间同样兼容），有效期 72 小时
+            signed_url = qiniu_auth.private_download_url(raw_url, expires=259200)
             return signed_url
         else:
             logger.warning(f"七牛 fetch 图片失败 {image_url}: status={info.status_code}")
@@ -160,16 +164,29 @@ def generate_image(
         return {"code": -1, "msg": f"系统异常: {str(e)}"}
 
 
+def _background_fetch_and_update(task_id: str, images: list):
+    """
+    后台线程函数：将图片逐张抓取到七牛云，完成后更新数据库 qiniu_url
+    失败时将状态更新为 '生成失败'
+    """
+    try:
+        qiniu_urls_json = _fetch_all_images_to_qiniu(images)
+        update_task_qiniu_url(task_id, qiniu_urls_json)
+        logger.info(f"后台线程七牛抓取完成: task_id={task_id}, 图片数={len(images)}")
+    except Exception as e:
+        logger.error(f"后台线程七牛抓取异常: task_id={task_id}, err={e}")
+        update_task_qiniu_url(task_id, "生成失败")
+
+
 def query_user_image_tasks(userid: str) -> dict:
     """
     查询某用户的所有图片生成任务结果
     流程：
       1. 查询数据库中该用户 qiniu_url='生成中' 的记录
-      2. 逐个调用 ALAPI 查询接口，若有图片 URL 则全部七牛 fetch 并更新 qiniu_url（JSON 数组）
-      3. 查询该用户所有任务的 qiniu_url 并返回
-
-    :param userid: 前端用户ID
-    :return: {"code": 200, "data": [{"task_id": "xxx", "qiniu_url": "JSON数组 或 生成中"}, ...]}
+      2. 逐个调用 ALAPI 查询接口：
+         - 若已完成且有图片 → 先将 qiniu_url 改为 '渲染中'，再启动后台线程执行七牛 fetch
+         - 若 ALAPI 返回错误 → 将 qiniu_url 改为 '生成失败'
+      3. 立即查询该用户所有任务并返回（不等后台线程）
     """
     if not userid:
         return {"code": -1, "msg": "userid 不能为空"}
@@ -195,22 +212,30 @@ def query_user_image_tasks(userid: str) -> dict:
             response.raise_for_status()
             result = response.json()
 
-            # ALAPI 查询接口实际返回结构:
-            # {"code": 200, "data": {"task_id": "...", "status": "completed",
-            #   "result": {"images": [{"url": "..."}]}}}
             if result.get("code") == 200:
                 data = result.get("data", {})
                 status = data.get("status", "")
                 images = data.get("result", {}).get("images", [])
                 if status == "completed" and images and isinstance(images, list) and len(images) > 0:
-                    # 全部图片进行七牛 fetch，存为 JSON 数组
-                    qiniu_urls_json = _fetch_all_images_to_qiniu(images)
-                    update_task_qiniu_url(task_id, qiniu_urls_json)
-                    logger.info(f"任务图片已全部抓取至七牛: task_id={task_id}, 图片数={len(images)}")
+                    # ALAPI 已出图，先将状态改为 '渲染中'，再后台线程抓取到七牛
+                    update_task_qiniu_url(task_id, "渲染中")
+                    t = threading.Thread(
+                        target=_background_fetch_and_update,
+                        args=(task_id, images),
+                        daemon=True,
+                    )
+                    t.start()
+                    logger.info(f"任务已完成，启动后台七牛抓取: task_id={task_id}, 图片数={len(images)}")
+                elif status == "failed":
+                    # ALAPI 任务失败
+                    update_task_qiniu_url(task_id, "生成失败")
+                    logger.warning(f"ALAPI 任务失败: task_id={task_id}")
                 else:
-                    # 任务还在处理中，保持 qiniu_url='生成中'
+                    # 任务还在处理中（processing），保持 qiniu_url='生成中'
                     logger.info(f"任务处理中: task_id={task_id}, status={status}")
             else:
+                # ALAPI 查询接口返回错误码，标记失败
+                update_task_qiniu_url(task_id, "生成失败")
                 logger.warning(f"查询任务失败: task_id={task_id}, msg={result.get('msg', '')}")
         except requests.exceptions.Timeout:
             logger.warning(f"查询任务超时: task_id={task_id}")
@@ -219,6 +244,37 @@ def query_user_image_tasks(userid: str) -> dict:
         except Exception as e:
             logger.warning(f"查询任务未知异常: task_id={task_id}, err={e}")
 
-    # 3. 查询该用户所有任务的 qiniu_url 并返回
-    all_tasks = get_all_tasks_by_userid(userid)
-    return {"code": 200, "data": all_tasks}
+# 数据库记录保留时长（秒），48 小时
+RECORD_EXPIRE_SECONDS = 48 * 3600
+# 每天凌晨3点执行清理
+CLEANUP_HOUR = 3
+
+
+def _cleanup_expired_records():
+    """
+    后台定时循环：每天凌晨3点扫描并删除超期的数据库记录
+    """
+    while True:
+        now = datetime.now()
+        target = now.replace(hour=CLEANUP_HOUR, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        time.sleep(wait_seconds)
+        try:
+            deleted_count = delete_expired_tasks(RECORD_EXPIRE_SECONDS)
+            if deleted_count > 0:
+                logger.info(f"定时清理: 删除了 {deleted_count} 条过期记录")
+            else:
+                logger.info("定时清理: 无过期记录")
+        except Exception as e:
+            logger.error(f"定时清理异常: {e}")
+
+
+def start_cleanup_daemon():
+    """
+    启动后台定时清理线程（daemon），在 FastAPI 启动时调用一次即可
+    """
+    t = threading.Thread(target=_cleanup_expired_records, daemon=True)
+    t.start()
+    logger.info("数据库过期记录定时清理线程已启动")

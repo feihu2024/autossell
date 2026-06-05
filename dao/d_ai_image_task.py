@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from model.schema import TAiImageTask
@@ -77,5 +78,28 @@ def get_all_tasks_by_userid(userid: str) -> list:
             TAiImageTask.userid == userid
         ).order_by(TAiImageTask.id.asc()).all()
         return [{"task_id": r.task_id, "qiniu_url": r.qiniu_url, "task_type": r.task_type} for r in records]
+    finally:
+        sess.close()
+
+
+def delete_expired_tasks(expire_seconds: int) -> int:
+    """
+    删除 created_at 超过 expire_seconds 秒的已完成记录（非 '生成中' 和 '渲染中' 的）
+    返回删除的行数
+    """
+    sess = Session()
+    try:
+        threshold = datetime.now() - timedelta(seconds=expire_seconds)
+        rows = sess.query(TAiImageTask).filter(
+            TAiImageTask.created_at < threshold,
+            TAiImageTask.qiniu_url.notin_(['生成中', '渲染中']),
+        ).delete(synchronize_session=False)
+        sess.commit()
+        logger.info(f"删除过期记录: {rows} 条, 阈值时间={threshold}")
+        return rows
+    except Exception as e:
+        sess.rollback()
+        logger.error(f"删除过期记录异常: {e}")
+        return 0
     finally:
         sess.close()

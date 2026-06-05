@@ -37,7 +37,8 @@ include_routers(app)
 @app.on_event("startup")
 async def startup():
     logging.info('Test log')
-    pass
+    from service.ai_image_generate_service import start_cleanup_daemon
+    start_cleanup_daemon()
 
 
 @app.on_event("shutdown")
