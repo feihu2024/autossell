@@ -3,7 +3,7 @@ import uuid
 import os
 from urllib.parse import urlparse
 from qiniu import Auth, put_data, BucketManager
-from config import QINIU
+from config import QINIU, DOMAIN
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def upload_video(file_bytes: bytes, original_filename: str) -> dict:
             return {"code": -1, "msg": "上传失败，请稍后重试"}
 
         # 拼接公网访问 URL
-        domain = QINIU.DOMAIN
+        domain = DOMAIN
         if not domain:
             logger.error("七牛 DOMAIN 未配置")
             return {"code": -1, "msg": "七牛域名未配置，请联系管理员"}

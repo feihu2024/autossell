@@ -107,4 +107,5 @@ class QINIU:
     accessKey: str = os.getenv('ACCESS_KEY')
     secretKey: str = os.getenv('SECRET_KEY')
     bucketName: str = os.getenv('BUCKET_NAME')
-    DOMAIN: str = os.getenv('DOMAIN', None)
+
+DOMAIN=os.getenv('DOMAIN', None)
