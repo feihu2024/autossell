@@ -110,6 +110,7 @@ def video_to_prompt(video_url: str) -> dict:
         },
         "parameters": {
             "incremental_output": stream,
+            "enable_thinking": False,
         },
     }
 
