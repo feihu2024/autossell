@@ -1,73 +1,54 @@
 import logging
 import uuid
-import os
+import datetime
+from pathlib import Path
 from urllib.parse import urlparse
-from qiniu import Auth, put_data, BucketManager
-from config import QINIU, DOMAIN
+from qiniu import Auth, BucketManager
+from config import QINIU, DOMAIN, DIRS
+from service import qiniu_service
 
 logger = logging.getLogger(__name__)
 
-# 上传文件存储前缀
-UPLOAD_PREFIX = "temp_video/"
 
-# 允许的视频扩展名
-ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".3gp"}
-
-
-def upload_video(file_bytes: bytes, original_filename: str) -> dict:
+def upload_video(file_bytes: bytes, filename: str) -> dict:
     """
-    将视频文件上传至七牛云，返回公网访问 URL
+    将前端传入的视频文件上传至七牛云，返回带签名的私有空间 URL（有效期 4 小时）
 
-    :param file_bytes: 视频文件的二进制内容
-    :param original_filename: 原始文件名（用于提取扩展名）
-    :return: {"code": 200, "data": {"video_url": "https://xxx/temp_video/uuid.mp4"}} 或错误信息
+    :param file_bytes: 文件二进制内容
+    :param filename: 原始文件名（用于取后缀）
+    :return: {"code": 200, "data": {"video_url": "带签名URL"}} 或错误信息
     """
-    if not file_bytes:
-        return {"code": -1, "msg": "文件不能为空"}
-
-    # 提取扩展名并校验
-    ext = os.path.splitext(original_filename)[1].lower() if original_filename else ""
-    if ext not in ALLOWED_EXTENSIONS:
-        return {"code": -1, "msg": f"不支持的视频格式: {ext}，支持: {', '.join(ALLOWED_EXTENSIONS)}"}
-
-    # 文件大小限制（500MB）
-    max_size = 500 * 1024 * 1024
-    if len(file_bytes) > max_size:
-        return {"code": -1, "msg": "文件大小超过500MB限制"}
-
-    # 生成唯一文件名
-    key = f"{UPLOAD_PREFIX}{uuid.uuid4().hex}{ext}"
+    # 文件大小校验：150MB
+    if len(file_bytes) > 150 * 1024 * 1024:
+        return {"code": -1, "msg": "已超文件最大限制（150MB）"}
 
     try:
-        # 七牛鉴权
-        qiniu_auth = Auth(QINIU.accessKey, QINIU.secretKey)
-        token = qiniu_auth.upload_token(QINIU.bucketName, key, expires=3600)
+        file_type = "video"
+        file_date = f"{datetime.date.today()}"
+        file_name = f"{uuid.uuid1()}{Path(filename).suffix}"
+        file_dir = Path(DIRS.assets_dir) / file_type / file_date
+        file_dir.mkdir(parents=True, exist_ok=True)
+        file_path = file_dir / file_name
 
-        # 上传二进制数据
-        ret, info = put_data(token, key, file_bytes)
+        # 落盘本地（临时文件）
+        with open(str(file_path), "wb") as f:
+            f.write(file_bytes)
 
-        if info.status_code != 200:
-            logger.error(f"七牛上传失败: status_code={info.status_code}, body={info.text_body}")
-            return {"code": -1, "msg": "上传失败，请稍后重试"}
+        # 上传到七牛
+        qiniu_res = qiniu_service.qiniu_upload(str(file_path), file_name)
+        if not qiniu_res:
+            return {"code": -1, "msg": "七牛上传失败"}
 
-        # 拼接公网访问 URL
+        # 生成私有空间签名 URL，有效期 4 小时
         domain = DOMAIN
         if not domain:
-            logger.error("七牛 DOMAIN 未配置")
             return {"code": -1, "msg": "七牛域名未配置，请联系管理员"}
 
-        # 确保 domain 以 https:// 开头且不以 / 结尾
-        if not domain.startswith("http"):
-            domain = f"https://{domain}"
-        domain = domain.rstrip("/")
-
-        video_url = f"{domain}/{key}"
-
-        # 私有空间：生成带签名的访问链接，有效期 4 小时
+        raw_url = f"{domain}/{file_name}"
         qiniu_auth = Auth(QINIU.accessKey, QINIU.secretKey)
-        signed_url = qiniu_auth.private_download_url(video_url, expires=14400)
+        signed_url = qiniu_auth.private_download_url(raw_url, expires=14400)
 
-        logger.info(f"视频上传成功: {signed_url}")
+        logger.info(f"视频上传成功: {file_name}")
         return {"code": 200, "data": {"video_url": signed_url}}
 
     except Exception as e:
