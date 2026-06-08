@@ -44,6 +44,9 @@ def upload_video(file_bytes: bytes, filename: str) -> dict:
         if not domain:
             return {"code": -1, "msg": "七牛域名未配置，请联系管理员"}
 
+        domain = domain.rstrip("/")
+        if not domain.startswith("http"):
+            domain = f"https://{domain}"
         raw_url = f"{domain}/{file_name}"
         qiniu_auth = Auth(QINIU.accessKey, QINIU.secretKey)
         signed_url = qiniu_auth.private_download_url(raw_url, expires=14400)
