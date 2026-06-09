@@ -4,8 +4,11 @@ import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from qiniu import Auth, BucketManager
-from config import QINIU, DOMAIN, DIRS
+from config import QINIU, DIRS
 from service import qiniu_service
+
+# 七牛云对外访问域名（硬编码）
+QINIU_BASE_URL = 'https://mlcfjihuaqn.yxiaozhu.com'
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +43,7 @@ def upload_video(file_bytes: bytes, filename: str) -> dict:
             return {"code": -1, "msg": "七牛上传失败"}
 
         # 生成私有空间签名 URL，有效期 4 小时
-        domain = DOMAIN
-        if not domain:
-            return {"code": -1, "msg": "七牛域名未配置，请联系管理员"}
-
-        domain = domain.rstrip("/")
-        if not domain.startswith("http"):
-            domain = f"https://{domain}"
-        raw_url = f"{domain}/{file_name}"
+        raw_url = f"{QINIU_BASE_URL}/{file_name}"
         qiniu_auth = Auth(QINIU.accessKey, QINIU.secretKey)
         signed_url = qiniu_auth.private_download_url(raw_url, expires=14400)
 
