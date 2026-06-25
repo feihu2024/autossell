@@ -5,43 +5,28 @@ from pathlib import Path
 from qiniu import Auth, BucketManager
 from config import QINIU
 from dao.d_video_config import get_config_value
+from service.video_parser import parse, ParseError, NetworkError
 
 logger = logging.getLogger(__name__)
 
-# ALAPI 视频解析接口地址
 ALAPI_VIDEO_URL = "https://v3.alapi.cn/api/video/url"
-
-# 七牛云对外访问域名（硬编码）
 QINIU_BASE_URL = 'https://mlcfjihuaqn.yxiaozhu.com'
 
 
 def _fetch_to_qiniu(resource_url: str, prefix: str = "video") -> str:
-    """
-    通过七牛 fetch 接口抓取远程资源并存储到七牛云
-
-    :param resource_url: 远程资源链接
-    :param prefix: 存储路径前缀（video / cover / pics / livephoto）
-    :return: 七牛公开访问链接，失败返回空字符串
-    """
     if not resource_url:
         return ""
-
     if not QINIU_BASE_URL:
         logger.error("七牛云域名未配置")
         return ""
-
-    # 提取文件扩展名
     try:
         suffix = Path(resource_url.split('?')[0]).suffix
     except Exception:
         suffix = ""
     if not suffix:
-        # 根据资源类型指定默认后缀：视频类 → .mp4，图片类 → .jpg
         _is_video = prefix in ("video", "livephoto") or "video" in prefix
         suffix = ".mp4" if _is_video else ".jpg"
-
     key = f"{prefix}/{uuid.uuid4()}{suffix}"
-
     try:
         qiniu_auth = Auth(QINIU.accessKey, QINIU.secretKey)
         bucket = BucketManager(qiniu_auth)
@@ -49,38 +34,29 @@ def _fetch_to_qiniu(resource_url: str, prefix: str = "video") -> str:
         if info.status_code == 200 and ret is not None:
             qiniu_key = ret.get("key", key)
             raw_url = f"{QINIU_BASE_URL}/{qiniu_key}"
-            # 生成私有空间签名链接（公开空间同样兼容），有效期 24 小时
-            signed_url = qiniu_auth.private_download_url(raw_url, expires=86400)
+            signed_url = qiniu_auth.private_download_url(raw_url, expires=259200)
             return signed_url
         else:
-            logger.warning(f"七牛 fetch 失败 {resource_url}: status={info.status_code}")
+            logger.warning("七牛 fetch 失败 %s: status=%s", resource_url, info.status_code)
             return ""
     except Exception as e:
-        logger.error(f"七牛上传异常 {resource_url}: {e}")
+        logger.error("七牛上传异常 %s: %s", resource_url, e)
         return ""
 
 
 def _upload_resources(data: dict) -> None:
-    """
-    将 ALAPI 返回数据中的视频、封面、图集、动态图转存到七牛云，原地替换链接
-
-    :param data: ALAPI 返回的 data 字段（会被原地修改）
-    """
-    # 视频链接
     video_url = data.get("video_url")
     if video_url:
         qiniu_url = _fetch_to_qiniu(video_url, "video")
         if qiniu_url:
             data["video_url"] = qiniu_url
 
-    # 封面图片
     cover_url = data.get("cover_url")
     if cover_url:
         qiniu_url = _fetch_to_qiniu(cover_url, "cover")
         if qiniu_url:
             data["cover_url"] = qiniu_url
 
-    # 图集列表
     pics = data.get("pics")
     if isinstance(pics, list):
         for i, pic_url in enumerate(pics):
@@ -89,7 +65,6 @@ def _upload_resources(data: dict) -> None:
                 if qiniu_url:
                     pics[i] = qiniu_url
 
-    # 动态图 livephoto
     livephotos = data.get("livephoto")
     if isinstance(livephotos, list):
         for item in livephotos:
@@ -106,31 +81,55 @@ def _upload_resources(data: dict) -> None:
                         item["video"] = qiniu_url
 
 
-def parse_video_url(url: str) -> dict:
-    """
-    通过 ALAPI 解析视频链接，提取视频/封面/图集并转存至七牛云
-    token 从数据库 video_config 表读取
+def _parse_url_to_data(info) -> dict:
+    data = {
+        "video_url": "",
+        "cover_url": "",
+        "title": info.title or "",
+        "pics": [],
+        "livephoto": [],
+    }
+    if info.media_type == "image":
+        data["pics"] = [img.url for img in info.images if img.url]
+    else:
+        data["video_url"] = info.url or ""
+        data["cover_url"] = info.poster or ""
+    return data
 
-    :param url: 用户输入的视频链接（支持抖音、快手、小红书、B站等平台）
-    :return: 解析结果字典，video_url / cover_url / pics / livephoto 已替换为七牛云链接
+
+def _try_direct_parse(url: str):
     """
-    # 从数据库读取 token
+    尝试用 video_parser 直抓，成功返回 (True, data_dict)，失败返回 (False, None)
+    """
+    try:
+        info = parse(url)
+    except (ParseError, NetworkError, Exception) as e:
+        logger.warning("video_parser 直抓失败（将降级到 ALAPI）: %s", e)
+        return False, None
+
+    data = _parse_url_to_data(info)
+
+    if not all([QINIU.accessKey, QINIU.secretKey, QINIU.bucketName, QINIU_BASE_URL]):
+        logger.warning("七牛云配置不完整，无法转存资源，返回原始链接")
+    else:
+        _upload_resources(data)
+
+    logger.info("video_parser 直抓并转存成功: %s", data.get('title', ''))
+    return True, data
+
+
+def _parse_via_alapi(url: str) -> dict:
+    """
+    原逻辑：从数据库读 token，调用 ALAPI 解析，转存七牛
+    """
     token = get_config_value("video_parse", "token")
     if not token:
         return {"code": -1, "msg": "token 未配置，请联系管理员"}
 
-    if not url:
-        return {"code": -1, "msg": "视频链接不能为空"}
-
-    # 校验七牛配置
     if not all([QINIU.accessKey, QINIU.secretKey, QINIU.bucketName, QINIU_BASE_URL]):
         return {"code": -1, "msg": "七牛云配置不完整，请联系管理员"}
 
-    payload = {
-        "token": token,
-        "url": url.strip()
-    }
-
+    payload = {"token": token, "url": url}
     headers = {"Content-Type": "application/json"}
 
     try:
@@ -138,23 +137,44 @@ def parse_video_url(url: str) -> dict:
         response.raise_for_status()
         result = response.json()
     except requests.exceptions.Timeout:
-        logger.error(f"视频解析超时: {url}")
+        logger.error("视频解析超时: %s", url)
         return {"code": -1, "msg": "解析超时，请稍后重试"}
     except requests.exceptions.RequestException as e:
-        logger.error(f"视频解析请求异常: {e}")
-        return {"code": -1, "msg": f"请求失败: {str(e)}"}
+        logger.error("视频解析请求异常: %s", e)
+        return {"code": -1, "msg": f"请求失败: {e}"}
     except Exception as e:
-        logger.error(f"视频解析未知异常: {e}")
-        return {"code": -1, "msg": f"系统异常: {str(e)}"}
+        logger.error("视频解析未知异常: %s", e)
+        return {"code": -1, "msg": f"系统异常: {e}"}
 
     if result.get("code") != 200:
-        logger.warning(f"视频解析失败: {result.get('msg', '未知错误')}")
+        logger.warning("视频解析失败: %s", result.get('msg', '未知错误'))
         return {"code": -1, "msg": result.get("msg", "解析失败，请检查链接是否正确")}
 
-    # 提取资源并转存到七牛云
     data = result.get("data", {})
     if data:
         _upload_resources(data)
 
-    logger.info(f"视频解析并转存成功: {data.get('title', '')}")
+    logger.info("ALAPI 解析并转存成功: %s", data.get('title', '') if isinstance(data, dict) else '')
     return result
+
+
+def parse_video_url(url: str) -> dict:
+    """
+    视频链接解析入口：
+    1. 先尝试 video_parser 直抓（豆包视频、小云雀视频/图片）
+    2. 直抓失败 → 降级到 ALAPI
+    """
+    if not url:
+        return {"code": -1, "msg": "视频链接不能为空"}
+
+    url_stripped = url.strip()
+    lower_url = url_stripped.lower()
+
+    # 只有含 doubao.com 或 xiaoyunque.jianying.com 才尝试直抓
+    if "doubao.com" in lower_url or "xiaoyunque.jianying.com" in lower_url:
+        ok, data = _try_direct_parse(url_stripped)
+        if ok:
+            return {"code": 200, "data": data}
+
+    # 降级：走 ALAPI
+    return _parse_via_alapi(url_stripped)
