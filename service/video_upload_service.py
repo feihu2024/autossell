@@ -4,11 +4,11 @@ import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from qiniu import Auth, BucketManager
-from config import QINIU, DIRS
+from config import VIDEOQINIU, DIRS
 from service import qiniu_service
 
 # 七牛云对外访问域名（硬编码）
-QINIU_BASE_URL = 'https://mlcfjihuaqn.yxiaozhu.com'
+QINIU_BASE_URL = 'https://vipvideo.yxiaozhu.com'
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def upload_video(file_bytes: bytes, filename: str) -> dict:
 
         # 生成私有空间签名 URL，有效期 4 小时
         raw_url = f"{QINIU_BASE_URL}/{file_name}"
-        qiniu_auth = Auth(QINIU.accessKey, QINIU.secretKey)
+        qiniu_auth = Auth(VIDEOQINIU.accessKey, VIDEOQINIU.secretKey)
         signed_url = qiniu_auth.private_download_url(raw_url, expires=14400)
 
         logger.info(f"视频上传成功: {file_name}")
@@ -72,8 +72,8 @@ def delete_file_by_url(url: str) -> dict:
         if not key:
             return {"code": -1, "msg": "无法从 url 中解析文件路径"}
 
-        bucket_mgr = BucketManager(Auth(QINIU.accessKey, QINIU.secretKey))
-        ret, info = bucket_mgr.delete(QINIU.bucketName, key)
+        bucket_mgr = BucketManager(Auth(VIDEOQINIU.accessKey, VIDEOQINIU.secretKey))
+        ret, info = bucket_mgr.delete(VIDEOQINIU.bucketName, key)
 
         if info.status_code == 200:
             logger.info(f"文件删除成功: key={key}")

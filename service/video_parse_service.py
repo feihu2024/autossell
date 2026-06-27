@@ -3,14 +3,14 @@ import logging
 import uuid
 from pathlib import Path
 from qiniu import Auth, BucketManager
-from config import QINIU
+from config import VIDEOQINIU
 from dao.d_video_config import get_config_value
 from service.video_parser import parse, ParseError, NetworkError
 
 logger = logging.getLogger(__name__)
 
 ALAPI_VIDEO_URL = "https://v3.alapi.cn/api/video/url"
-QINIU_BASE_URL = 'https://mlcfjihuaqn.yxiaozhu.com'
+QINIU_BASE_URL = 'https://vipvideo.yxiaozhu.com'
 
 
 def _fetch_to_qiniu(resource_url: str, prefix: str = "video") -> str:
@@ -28,9 +28,9 @@ def _fetch_to_qiniu(resource_url: str, prefix: str = "video") -> str:
         suffix = ".mp4" if _is_video else ".jpg"
     key = f"{prefix}/{uuid.uuid4()}{suffix}"
     try:
-        qiniu_auth = Auth(QINIU.accessKey, QINIU.secretKey)
+        qiniu_auth = Auth(VIDEOQINIU.accessKey, VIDEOQINIU.secretKey)
         bucket = BucketManager(qiniu_auth)
-        ret, info = bucket.fetch(resource_url, QINIU.bucketName, key)
+        ret, info = bucket.fetch(resource_url, VIDEOQINIU.bucketName, key)
         if info.status_code == 200 and ret is not None:
             qiniu_key = ret.get("key", key)
             raw_url = f"{QINIU_BASE_URL}/{qiniu_key}"
@@ -109,7 +109,7 @@ def _try_direct_parse(url: str):
 
     data = _parse_url_to_data(info)
 
-    if not all([QINIU.accessKey, QINIU.secretKey, QINIU.bucketName, QINIU_BASE_URL]):
+    if not all([VIDEOQINIU.accessKey, VIDEOQINIU.secretKey, VIDEOQINIU.bucketName, QINIU_BASE_URL]):
         logger.warning("七牛云配置不完整，无法转存资源，返回原始链接")
     else:
         _upload_resources(data)
@@ -126,7 +126,7 @@ def _parse_via_alapi(url: str) -> dict:
     if not token:
         return {"code": -1, "msg": "token 未配置，请联系管理员"}
 
-    if not all([QINIU.accessKey, QINIU.secretKey, QINIU.bucketName, QINIU_BASE_URL]):
+    if not all([VIDEOQINIU.accessKey, VIDEOQINIU.secretKey, VIDEOQINIU.bucketName, QINIU_BASE_URL]):
         return {"code": -1, "msg": "七牛云配置不完整，请联系管理员"}
 
     payload = {"token": token, "url": url}

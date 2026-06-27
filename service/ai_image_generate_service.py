@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from pathlib import Path
 from qiniu import Auth, BucketManager
-from config import QINIU
+from config import VIDEOQINIU
 from dao.d_video_config import get_config_value
 from dao.d_ai_image_task import (
     create_image_task,
@@ -26,7 +26,7 @@ ALAPI_IMAGE_GEN_URL = "https://v3.alapi.cn/api/ai/images/generations_sync"
 ALAPI_IMAGE_TASK_URL = "https://v3.alapi.cn/api/ai/images/generations/task"
 
 # 七牛云对外访问域名（与视频解析保持一致）
-QINIU_BASE_URL = 'https://mlcfjihuaqn.yxiaozhu.com'
+QINIU_BASE_URL = 'https://vipvideo.yxiaozhu.com'
 
 
 def _fetch_image_to_qiniu(image_url: str) -> str:
@@ -55,9 +55,9 @@ def _fetch_image_to_qiniu(image_url: str) -> str:
     key = f"ai_image/{uuid.uuid4()}{suffix}"
 
     try:
-        qiniu_auth = Auth(QINIU.accessKey, QINIU.secretKey)
+        qiniu_auth = Auth(VIDEOQINIU.accessKey, VIDEOQINIU.secretKey)
         bucket = BucketManager(qiniu_auth)
-        ret, info = bucket.fetch(image_url, QINIU.bucketName, key)
+        ret, info = bucket.fetch(image_url, VIDEOQINIU.bucketName, key)
         if info.status_code == 200 and ret is not None:
             qiniu_key = ret.get("key", key)
             raw_url = f"{QINIU_BASE_URL}/{qiniu_key}"
