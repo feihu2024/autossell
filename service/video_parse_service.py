@@ -10,6 +10,7 @@ from service.video_parser import parse, ParseError, NetworkError
 logger = logging.getLogger(__name__)
 
 ALAPI_VIDEO_URL = "https://v3.alapi.cn/api/video/url"
+ZHUCEKA_API = "https://api.zhuceka.cn/home/api"
 QINIU_BASE_URL = 'https://vipvideo.yxiaozhu.com'
 
 
@@ -97,37 +98,25 @@ def _parse_url_to_data(info) -> dict:
     return data
 
 
-def _try_direct_parse(url: str):
-    """
-    尝试用 video_parser 直抓，成功返回 (True, data_dict)，失败返回 (False, None)
-    """
-    try:
-        info = parse(url)
-    except (ParseError, NetworkError, Exception) as e:
-        logger.warning("video_parser 直抓失败（将降级到 ALAPI）: %s", e)
-        return False, None
-
-    data = _parse_url_to_data(info)
-
+def _check_qiniu_config() -> bool:
     if not all([VIDEOQINIU.accessKey, VIDEOQINIU.secretKey, VIDEOQINIU.bucketName, QINIU_BASE_URL]):
-        logger.warning("七牛云配置不完整，无法转存资源，返回原始链接")
-    else:
-        _upload_resources(data)
+        return False
+    return True
 
-    logger.info("video_parser 直抓并转存成功: %s", data.get('title', ''))
-    return True, data
 
+# ============================================================
+#  第一层：ALAPI
+# ============================================================
 
 def _parse_via_alapi(url: str) -> dict:
-    """
-    原逻辑：从数据库读 token，调用 ALAPI 解析，转存七牛
-    """
     token = get_config_value("video_parse", "token")
     if not token:
-        return {"code": -1, "msg": "token 未配置，请联系管理员"}
+        logger.warning("ALAPI token 未配置，跳过第一层")
+        return {"code": -1, "msg": "token 未配置"}
 
-    if not all([VIDEOQINIU.accessKey, VIDEOQINIU.secretKey, VIDEOQINIU.bucketName, QINIU_BASE_URL]):
-        return {"code": -1, "msg": "七牛云配置不完整，请联系管理员"}
+    if not _check_qiniu_config():
+        logger.warning("七牛云配置不完整，跳过第一层")
+        return {"code": -1, "msg": "七牛云配置不完整"}
 
     payload = {"token": token, "url": url}
     headers = {"Content-Type": "application/json"}
@@ -137,18 +126,18 @@ def _parse_via_alapi(url: str) -> dict:
         response.raise_for_status()
         result = response.json()
     except requests.exceptions.Timeout:
-        logger.error("视频解析超时: %s", url)
-        return {"code": -1, "msg": "解析超时，请稍后重试"}
+        logger.error("ALAPI 解析超时: %s", url)
+        return {"code": -1, "msg": "解析超时"}
     except requests.exceptions.RequestException as e:
-        logger.error("视频解析请求异常: %s", e)
+        logger.error("ALAPI 请求异常: %s", e)
         return {"code": -1, "msg": f"请求失败: {e}"}
     except Exception as e:
-        logger.error("视频解析未知异常: %s", e)
+        logger.error("ALAPI 未知异常: %s", e)
         return {"code": -1, "msg": f"系统异常: {e}"}
 
     if result.get("code") != 200:
-        logger.warning("视频解析失败: %s", result.get('msg', '未知错误'))
-        return {"code": -1, "msg": result.get("msg", "解析失败，请检查链接是否正确")}
+        logger.warning("ALAPI 解析失败: %s", result.get('msg', '未知错误'))
+        return {"code": -1, "msg": result.get("msg", "解析失败")}
 
     data = result.get("data", {})
     if data:
@@ -158,23 +147,140 @@ def _parse_via_alapi(url: str) -> dict:
     return result
 
 
+# ============================================================
+#  第二层：zhuceka API
+# ============================================================
+
+def _parse_via_zhuceka(url: str) -> dict:
+    dsuid = get_config_value("video_parse", "dsuid")
+    dskey = get_config_value("video_parse", "dskey")
+    if not dsuid or not dskey:
+        logger.warning("zhuceka dsuid/dskey 未配置，跳过第二层")
+        return {"code": -1, "msg": "zhuceka 配置未设置"}
+
+    if not _check_qiniu_config():
+        return {"code": -1, "msg": "七牛云配置不完整"}
+
+    params = {
+        "type": "dsp",
+        "uid": dsuid,
+        "key": dskey,
+        "url": url,
+    }
+
+    try:
+        response = requests.get(ZHUCEKA_API, params=params, timeout=15)
+        response.raise_for_status()
+        result = response.json()
+    except requests.exceptions.Timeout:
+        logger.error("zhuceka 解析超时: %s", url)
+        return {"code": -1, "msg": "解析超时"}
+    except requests.exceptions.RequestException as e:
+        logger.error("zhuceka 请求异常: %s", e)
+        return {"code": -1, "msg": f"请求失败: {e}"}
+    except Exception as e:
+        logger.error("zhuceka 未知异常: %s", e)
+        return {"code": -1, "msg": f"系统异常: {e}"}
+
+    if result.get("code") != 200:
+        logger.warning("zhuceka 解析失败: %s", result.get('msg', '未知错误'))
+        return {"code": -1, "msg": result.get("msg", "解析失败")}
+
+    raw_data = result.get("data", {}) or {}
+
+    # zhuceka images 归一化为字符串列表
+    raw_images = raw_data.get("images", []) or []
+    pics = []
+    for img in raw_images:
+        if isinstance(img, str):
+            pics.append(img)
+        elif isinstance(img, dict):
+            u = img.get("url", "")
+            if u:
+                pics.append(u)
+
+    # zhuceka live_photo 归一化为 [{"cover": "", "video": ""}] 结构
+    raw_livephotos = raw_data.get("live_photo", []) or []
+    livephotos = []
+    for item in raw_livephotos:
+        if isinstance(item, dict):
+            livephotos.append({
+                "cover": item.get("cover", item.get("cover_url", "")),
+                "video": item.get("video", item.get("video_url", "")),
+            })
+        elif isinstance(item, str):
+            livephotos.append({"cover": "", "video": item})
+
+    data = {
+        "video_url": raw_data.get("video", ""),
+        "cover_url": raw_data.get("cover", ""),
+        "title": raw_data.get("title", ""),
+        "desc": "",
+        "pics": pics,
+        "livephoto": livephotos,
+    }
+
+    _upload_resources(data)
+
+    logger.info("zhuceka 解析并转存成功: %s", data.get('title', ''))
+    return {"code": 200, "data": data}
+
+
+# ============================================================
+#  第三层：自有逻辑（video_parser 直抓）
+# ============================================================
+
+def _try_direct_parse(url: str):
+    try:
+        info = parse(url)
+    except (ParseError, NetworkError, Exception) as e:
+        logger.warning("video_parser 直抓失败: %s", e)
+        return False, None
+
+    data = _parse_url_to_data(info)
+
+    if not _check_qiniu_config():
+        logger.warning("七牛云配置不完整，无法转存资源，返回原始链接")
+    else:
+        _upload_resources(data)
+
+    logger.info("video_parser 直抓并转存成功: %s", data.get('title', ''))
+    return True, data
+
+
+# ============================================================
+#  统一入口：四层递进
+# ============================================================
+
 def parse_video_url(url: str) -> dict:
     """
-    视频链接解析入口：
-    1. 先尝试 video_parser 直抓（豆包视频、小云雀视频/图片）
-    2. 直抓失败 → 降级到 ALAPI
+    视频链接解析入口（四层递进）：
+    1. ALAPI
+    2. zhuceka API
+    3. 自有逻辑（video_parser 直抓 doubao/小云雀）
+    4. 友好提示：提取异常请联系客服
     """
     if not url:
         return {"code": -1, "msg": "视频链接不能为空"}
 
     url_stripped = url.strip()
-    lower_url = url_stripped.lower()
 
-    # 只有含 doubao.com 或 xiaoyunque.jianying.com 才尝试直抓
-    if "doubao.com" in lower_url or "xiaoyunque.jianying.com" in lower_url:
-        ok, data = _try_direct_parse(url_stripped)
-        if ok:
-            return {"code": 200, "data": data}
+    # 第一层：ALAPI
+    result = _parse_via_alapi(url_stripped)
+    if result.get("code") == 200:
+        return result
+    logger.warning("第一层 ALAPI 失败，尝试第二层 zhuceka: %s", result.get("msg"))
 
-    # 降级：走 ALAPI
-    return _parse_via_alapi(url_stripped)
+    # 第二层：zhuceka API
+    result = _parse_via_zhuceka(url_stripped)
+    if result.get("code") == 200:
+        return result
+    logger.warning("第二层 zhuceka 失败，尝试第三层自有逻辑: %s", result.get("msg"))
+
+    # 第三层：自有逻辑（video_parser 直抓）
+    ok, data = _try_direct_parse(url_stripped)
+    if ok:
+        return {"code": 200, "data": data}
+
+    # 第四层：友好提示
+    return {"code": -1, "msg": "提取异常请联系客服"}
