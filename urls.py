@@ -5,7 +5,7 @@ from router import admin, mall, supplier, finance
 from router.admin import manage, package, package_order, good_spec, settings, groupsir, balance, good, busines_service, video_config
 from router import file, r_schema, r_query, r_update, r_create, r_wx
 from router.mall import autobody, user, home, address, good, order, \
-    account, platform, vtask, adbrand, video_parse, ai_image_generate, video_to_prompt, video_upload
+    account, platform, vtask, adbrand, video_parse, ai_image_generate, video_to_prompt, video_upload, video_download
 # from router.finance import shuser
 from router.task import sucai, clockup, tuan
 
@@ -61,6 +61,7 @@ def include_routers(app: FastAPI):
     app.include_router(mall.autobody.router, prefix='/web/autobody', tags=['/web/autobody'])
     # # video parse / ai image / video to prompt (小程序调用)
     app.include_router(mall.video_parse.router, prefix='/web/video/parse', tags=['/web/video/parse'])
+    app.include_router(mall.video_download.router, prefix='/web/video/download', tags=['/web/video/download'])
     app.include_router(mall.ai_image_generate.router, prefix='/web/video/generate', tags=['/web/video/generate'])
     app.include_router(mall.video_to_prompt.router, prefix='/web/video/to_prompt', tags=['/web/video/to_prompt'])
     # video upload (小程序调用)
