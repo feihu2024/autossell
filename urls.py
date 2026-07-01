@@ -61,7 +61,7 @@ def include_routers(app: FastAPI):
     app.include_router(mall.autobody.router, prefix='/web/autobody', tags=['/web/autobody'])
     # # video parse / ai image / video to prompt (小程序调用)
     app.include_router(mall.video_parse.router, prefix='/web/video/parse', tags=['/web/video/parse'])
-    app.include_router(mall.video_download.router, prefix='/web/video/download', tags=['/web/video/download'])
+    # app.include_router(mall.video_download.router, prefix='/web/video/download', tags=['/web/video/download'])
     app.include_router(mall.ai_image_generate.router, prefix='/web/video/generate', tags=['/web/video/generate'])
     app.include_router(mall.video_to_prompt.router, prefix='/web/video/to_prompt', tags=['/web/video/to_prompt'])
     # video upload (小程序调用)
