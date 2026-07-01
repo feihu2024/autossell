@@ -29,10 +29,15 @@ async def video_redirect(token: str):
     七牛 CDN 回源时会将请求路径原样转发到后端。
     解码 token 获取原始直链，返回 302 让 CDN 去源站拉取。
     """
-    raw_url = _decode_token(token)
-    if not raw_url:
-        logger.warning("download token 无效或已过期: %s", token)
-        raise HTTPException(status_code=410, detail="下载链接已过期，请重新获取")
+    # ===== 临时测试：所有请求都跳到验证文件，测试 CDN 302 跟随 =====
+    test_url = "http://vipvideo.yxiaozhu.com/verification.html"
+    return RedirectResponse(url=test_url, status_code=302)
+    # ===== 临时测试结束 =====
 
-    logger.info("302 redirect token → %s...", raw_url[:80])
-    return RedirectResponse(url=raw_url, status_code=302)
+    # raw_url = _decode_token(token)
+    # if not raw_url:
+    #     logger.warning("download token 无效或已过期: %s", token)
+    #     raise HTTPException(status_code=410, detail="下载链接已过期，请重新获取")
+    #
+    # logger.info("302 redirect token → %s...", raw_url[:80])
+    # return RedirectResponse(url=raw_url, status_code=302)
