@@ -7,12 +7,18 @@ CDN 跟随 302 后直接从源站拉取视频并缓存。
 """
 import logging
 from fastapi import APIRouter
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi import HTTPException
 from service.video_parse_service import _decode_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get("/health")
+async def origin_health():
+    """七牛源站测试专用，返回 200 证明源站可用"""
+    return Response(content="OK", media_type="text/plain")
 
 
 @router.get("/{token}")
