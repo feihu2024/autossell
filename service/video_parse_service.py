@@ -35,7 +35,7 @@ def _encode_token(raw_url: str) -> str:
     return token
 
 
-def _decode_token(token: str):
+def _decode_token(token: str) -> str:
     """解码 token → raw_url，过期或伪造返回 None"""
     try:
         padding = 4 - len(token) % 4
