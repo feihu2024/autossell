@@ -54,7 +54,11 @@ def _decode_token(token: str) -> str:
         ).hexdigest()[:16]
         if not hmac.compare_digest(sig, expected):
             return None
-        raw_url = zlib.decompress(base64.urlsafe_b64decode(compressed.encode() + b"=" * (4 - len(compressed) % 4))).decode()
+        c_bytes = compressed.encode()
+        c_padding = 4 - len(c_bytes) % 4
+        if c_padding != 4:
+            c_bytes += b"=" * c_padding
+        raw_url = zlib.decompress(base64.urlsafe_b64decode(c_bytes)).decode()
         return raw_url
     except Exception:
         return None
