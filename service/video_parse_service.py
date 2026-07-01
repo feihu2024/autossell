@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import base64
 import time
+import zlib
 import logging
 import requests
 from config import SECRET
@@ -26,11 +27,12 @@ _SEP = "\x00"  # 字段分隔符，URL 中不可能出现，确保 split 安全
 
 
 def _encode_token(raw_url: str) -> str:
-    """将 raw_url 编码为带签名和过期时间的 token"""
+    """将 raw_url 编码为带签名和过期时间的 token（zlib 压缩 URL 以缩短 token）"""
     expire = str(int(time.time()) + _TOKEN_TTL)
-    payload = f"{expire}{_SEP}{raw_url}"
+    compressed = base64.urlsafe_b64encode(zlib.compress(raw_url.encode())).rstrip(b"=").decode()
+    payload = f"{expire}{_SEP}{compressed}"
     sig = hmac.new(_TOKEN_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:16]
-    data = f"{expire}{_SEP}{raw_url}{_SEP}{sig}"
+    data = f"{expire}{_SEP}{compressed}{_SEP}{sig}"
     token = base64.urlsafe_b64encode(data.encode()).rstrip(b"=").decode()
     return token
 
@@ -42,16 +44,17 @@ def _decode_token(token: str) -> str:
         if padding != 4:
             token += "=" * padding
         decoded = base64.urlsafe_b64decode(token.encode()).decode()
-        expire_str, raw_url, sig = decoded.split(_SEP, 2)
+        expire_str, compressed, sig = decoded.split(_SEP, 2)
         if int(expire_str) < time.time():
             return None
         expected = hmac.new(
             _TOKEN_SECRET,
-            f"{expire_str}{_SEP}{raw_url}".encode(),
+            f"{expire_str}{_SEP}{compressed}".encode(),
             hashlib.sha256,
         ).hexdigest()[:16]
         if not hmac.compare_digest(sig, expected):
             return None
+        raw_url = zlib.decompress(base64.urlsafe_b64decode(compressed.encode() + b"=" * (4 - len(compressed) % 4))).decode()
         return raw_url
     except Exception:
         return None
