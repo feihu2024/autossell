@@ -1,9 +1,5 @@
 import requests
 import logging
-import uuid
-from pathlib import Path
-from qiniu import Auth, BucketManager
-from config import VIDEOQINIU
 from dao.d_video_config import get_config_value
 from service.video_parser import parse, ParseError, NetworkError
 
@@ -11,75 +7,6 @@ logger = logging.getLogger(__name__)
 
 ALAPI_VIDEO_URL = "https://v3.alapi.cn/api/video/url"
 ZHUCEKA_API = "https://api.zhuceka.cn/home/api"
-QINIU_BASE_URL = 'https://vipvideo.yxiaozhu.com'
-
-
-def _fetch_to_qiniu(resource_url: str, prefix: str = "video") -> str:
-    if not resource_url:
-        return ""
-    if not QINIU_BASE_URL:
-        logger.error("七牛云域名未配置")
-        return ""
-    try:
-        suffix = Path(resource_url.split('?')[0]).suffix
-    except Exception:
-        suffix = ""
-    if not suffix:
-        _is_video = prefix in ("video", "livephoto") or "video" in prefix
-        suffix = ".mp4" if _is_video else ".jpg"
-    key = f"{prefix}/{uuid.uuid4()}{suffix}"
-    try:
-        qiniu_auth = Auth(VIDEOQINIU.accessKey, VIDEOQINIU.secretKey)
-        bucket = BucketManager(qiniu_auth)
-        ret, info = bucket.fetch(resource_url, VIDEOQINIU.bucketName, key)
-        if info.status_code == 200 and ret is not None:
-            qiniu_key = ret.get("key", key)
-            raw_url = f"{QINIU_BASE_URL}/{qiniu_key}"
-            signed_url = qiniu_auth.private_download_url(raw_url, expires=259200)
-            return signed_url
-        else:
-            logger.warning("七牛 fetch 失败 %s: status=%s", resource_url, info.status_code)
-            return ""
-    except Exception as e:
-        logger.error("七牛上传异常 %s: %s", resource_url, e)
-        return ""
-
-
-def _upload_resources(data: dict) -> None:
-    video_url = data.get("video_url")
-    if video_url:
-        qiniu_url = _fetch_to_qiniu(video_url, "video")
-        if qiniu_url:
-            data["video_url"] = qiniu_url
-
-    cover_url = data.get("cover_url")
-    if cover_url:
-        qiniu_url = _fetch_to_qiniu(cover_url, "cover")
-        if qiniu_url:
-            data["cover_url"] = qiniu_url
-
-    pics = data.get("pics")
-    if isinstance(pics, list):
-        for i, pic_url in enumerate(pics):
-            if pic_url:
-                qiniu_url = _fetch_to_qiniu(pic_url, "pics")
-                if qiniu_url:
-                    pics[i] = qiniu_url
-
-    livephotos = data.get("livephoto")
-    if isinstance(livephotos, list):
-        for item in livephotos:
-            if isinstance(item, dict):
-                lp_cover = item.get("cover")
-                if lp_cover:
-                    qiniu_url = _fetch_to_qiniu(lp_cover, "livephoto_cover")
-                    if qiniu_url:
-                        item["cover"] = qiniu_url
-                lp_video = item.get("video")
-                if lp_video:
-                    qiniu_url = _fetch_to_qiniu(lp_video, "livephoto_video")
-                    if qiniu_url:
-                        item["video"] = qiniu_url
 
 
 def _parse_url_to_data(info) -> dict:
@@ -98,12 +25,6 @@ def _parse_url_to_data(info) -> dict:
     return data
 
 
-def _check_qiniu_config() -> bool:
-    if not all([VIDEOQINIU.accessKey, VIDEOQINIU.secretKey, VIDEOQINIU.bucketName, QINIU_BASE_URL]):
-        return False
-    return True
-
-
 # ============================================================
 #  第一层：ALAPI
 # ============================================================
@@ -113,10 +34,6 @@ def _parse_via_alapi(url: str) -> dict:
     if not token:
         logger.warning("ALAPI token 未配置，跳过第一层")
         return {"code": -1, "msg": "token 未配置"}
-
-    if not _check_qiniu_config():
-        logger.warning("七牛云配置不完整，跳过第一层")
-        return {"code": -1, "msg": "七牛云配置不完整"}
 
     payload = {"token": token, "url": url}
     headers = {"Content-Type": "application/json"}
@@ -140,10 +57,7 @@ def _parse_via_alapi(url: str) -> dict:
         return {"code": -1, "msg": result.get("msg", "解析失败")}
 
     data = result.get("data", {})
-    if data:
-        _upload_resources(data)
-
-    logger.info("ALAPI 解析并转存成功: %s", data.get('title', '') if isinstance(data, dict) else '')
+    logger.info("ALAPI 解析成功: %s", data.get('title', '') if isinstance(data, dict) else '')
     return result
 
 
@@ -157,9 +71,6 @@ def _parse_via_zhuceka(url: str) -> dict:
     if not dsuid or not dskey:
         logger.warning("zhuceka dsuid/dskey 未配置，跳过第二层")
         return {"code": -1, "msg": "zhuceka 配置未设置"}
-
-    if not _check_qiniu_config():
-        return {"code": -1, "msg": "七牛云配置不完整"}
 
     params = {
         "type": "dsp",
@@ -220,9 +131,7 @@ def _parse_via_zhuceka(url: str) -> dict:
         "livephoto": livephotos,
     }
 
-    _upload_resources(data)
-
-    logger.info("zhuceka 解析并转存成功: %s", data.get('title', ''))
+    logger.info("zhuceka 解析成功: %s", data.get('title', ''))
     return {"code": 200, "data": data}
 
 
@@ -238,13 +147,7 @@ def _try_direct_parse(url: str):
         return False, None
 
     data = _parse_url_to_data(info)
-
-    if not _check_qiniu_config():
-        logger.warning("七牛云配置不完整，无法转存资源，返回原始链接")
-    else:
-        _upload_resources(data)
-
-    logger.info("video_parser 直抓并转存成功: %s", data.get('title', ''))
+    logger.info("video_parser 直抓成功: %s", data.get('title', ''))
     return True, data
 
 
@@ -257,8 +160,11 @@ def parse_video_url(url: str) -> dict:
     视频链接解析入口（四层递进）：
     1. ALAPI
     2. zhuceka API
-    3. 自有逻辑（video_parser 直抓 doubao/小云雀）
+    3. 自有逻辑（video_parser 直抓）
     4. 友好提示：提取异常请联系客服
+
+    只返回原始公网 URL，不涉及 CDN/七牛/Redis 任何缓存逻辑。
+    下载走独立接口 /web/video/download。
     """
     if not url:
         return {"code": -1, "msg": "视频链接不能为空"}
