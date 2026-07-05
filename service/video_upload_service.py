@@ -3,14 +3,21 @@ import uuid
 import datetime
 from pathlib import Path
 from urllib.parse import urlparse
-from qiniu import Auth, BucketManager
+from qiniu import Auth, BucketManager, put_file
 from config import VIDEOQINIU, DIRS
-from service import qiniu_service
-
-# 七牛云对外访问域名（硬编码）
-QINIU_BASE_URL = 'https://vipvideo.yxiaozhu.com'
 
 logger = logging.getLogger(__name__)
+
+
+def _upload_to_qiniu(filepath: str, key: str) -> bool:
+    """直接用 VIDEOQINIU 凭证上传到视频空间"""
+    auth = Auth(VIDEOQINIU.accessKey, VIDEOQINIU.secretKey)
+    token = auth.upload_token(VIDEOQINIU.bucketName, key, 3600)
+    ret, info = put_file(token, key, filepath, version='v2')
+    if info.status_code == 200:
+        return True
+    logger.error(f"七牛上传失败: status={info.status_code}, body={info.text_body}")
+    return False
 
 
 def upload_video(file_bytes: bytes, filename: str) -> dict:
@@ -37,13 +44,12 @@ def upload_video(file_bytes: bytes, filename: str) -> dict:
         with open(str(file_path), "wb") as f:
             f.write(file_bytes)
 
-        # 上传到七牛
-        qiniu_res = qiniu_service.qiniu_upload(str(file_path), file_name)
-        if not qiniu_res:
+        # 上传到七牛（使用 VIDEOQINIU 凭证）
+        if not _upload_to_qiniu(str(file_path), file_name):
             return {"code": -1, "msg": "七牛上传失败"}
 
         # 生成私有空间签名 URL，有效期 4 小时
-        raw_url = f"{QINIU_BASE_URL}/{file_name}"
+        raw_url = f"{VIDEOQINIU.domain}/{file_name}"
         qiniu_auth = Auth(VIDEOQINIU.accessKey, VIDEOQINIU.secretKey)
         signed_url = qiniu_auth.private_download_url(raw_url, expires=14400)
 
