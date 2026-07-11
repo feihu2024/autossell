@@ -26,7 +26,7 @@ def _parse_url_to_data(info) -> dict:
 
 
 # ============================================================
-#  第一层：ALAPI
+#  第一层：zhuceka API（大圣）
 # ============================================================
 
 def _parse_via_alapi(url: str) -> dict:
@@ -62,7 +62,7 @@ def _parse_via_alapi(url: str) -> dict:
 
 
 # ============================================================
-#  第二层：zhuceka API
+#  第二层：ALAPI
 # ============================================================
 
 def _parse_via_zhuceka(url: str) -> dict:
@@ -158,8 +158,8 @@ def _try_direct_parse(url: str):
 def parse_video_url(url: str) -> dict:
     """
     视频链接解析入口（四层递进）：
-    1. ALAPI
-    2. zhuceka API
+    1. zhuceka API（大圣）
+    2. ALAPI
     3. 自有逻辑（video_parser 直抓）
     4. 友好提示：提取异常请联系客服
 
@@ -171,17 +171,17 @@ def parse_video_url(url: str) -> dict:
 
     url_stripped = url.strip()
 
-    # 第一层：ALAPI
-    result = _parse_via_alapi(url_stripped)
-    if result.get("code") == 200:
-        return result
-    logger.warning("第一层 ALAPI 失败，尝试第二层 zhuceka: %s", result.get("msg"))
-
-    # 第二层：zhuceka API
+    # 第一层：zhuceka（大圣）
     result = _parse_via_zhuceka(url_stripped)
     if result.get("code") == 200:
         return result
-    logger.warning("第二层 zhuceka 失败，尝试第三层自有逻辑: %s", result.get("msg"))
+    logger.warning("第一层 zhuceka 失败，尝试第二层 ALAPI: %s", result.get("msg"))
+
+    # 第二层：ALAPI
+    result = _parse_via_alapi(url_stripped)
+    if result.get("code") == 200:
+        return result
+    logger.warning("第二层 ALAPI 失败，尝试第三层自有逻辑: %s", result.get("msg"))
 
     # 第三层：自有逻辑（video_parser 直抓）
     ok, data = _try_direct_parse(url_stripped)
