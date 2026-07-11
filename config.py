@@ -107,5 +107,9 @@ class QINIU:
     accessKey: str = os.getenv('ACCESS_KEY')
     secretKey: str = os.getenv('SECRET_KEY')
     bucketName: str = os.getenv('BUCKET_NAME')
+    # 七牛存储区域，默认华东 z0。可选: z0(华东), z1(华北), z2(华南), na0(北美), as0(东南亚)
+    region: str = os.getenv('QINIU_REGION', 'z0')
+    # 七牛对外访问域名
+    domain: str = os.getenv('QINIU_DOMAIN', 'https://vipvideo.yxiaozhu.com')
 
 DOMAIN=os.getenv('DOMAIN', None)
