@@ -189,4 +189,6 @@ def parse_video_url(url: str) -> dict:
         return {"code": 200, "data": data}
 
     # 第四层：友好提示
+    if "jimeng.jianying.com" in url_stripped:
+        return {"code": -1, "msg": "该作品未发布草稿箱，请先从草稿箱发布作品后重新复制分享链接即可提取"}
     return {"code": -1, "msg": "提取异常请联系客服"}
